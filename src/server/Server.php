@@ -204,8 +204,8 @@ class Server implements ServerInterface{
 
 		$this->ipSec = [];
 
-		if(!$this->shutdown and ($this->ticks % self::RAKLIB_TPS) === 0){
-			if($this->sendBytes > 0 or $this->receiveBytes > 0){
+		if(!$this->shutdown && ($this->ticks % self::RAKLIB_TPS) === 0){
+			if($this->sendBytes > 0 || $this->receiveBytes > 0){
 				$this->eventListener->onBandwidthStatsUpdate($this->sendBytes, $this->receiveBytes);
 				$this->sendBytes = 0;
 				$this->receiveBytes = 0;
@@ -252,8 +252,9 @@ class Server implements ServerInterface{
 
 		if(isset($this->ipSec[$addressIp])){
 			if(++$this->ipSec[$addressIp] >= $this->packetLimit){
-				$this->blockAddress($addressIp);
-				return true;
+				if ($this->blockAddress($addressIp)) {
+					return true;
+				}
 			}
 		}else{
 			$this->ipSec[$addressIp] = 1;
@@ -338,7 +339,7 @@ class Server implements ServerInterface{
 
 	public function sendEncapsulated(int $sessionId, EncapsulatedPacket $packet, bool $immediate = false) : void{
 		$session = $this->sessions[$sessionId] ?? null;
-		if($session !== null and $session->isConnected()){
+		if($session !== null && $session->isConnected()){
 			$session->addEncapsulatedToQueue($packet, $immediate);
 		}
 	}
@@ -369,9 +370,14 @@ class Server implements ServerInterface{
 		$this->packetLimit = $limit;
 	}
 
-	public function blockAddress(string $address, int $timeout = 300) : void{
+	public function blockAddress(string $address, int $timeout = 300) : bool{
+		if (isset($_ENV['TRUSTED_IP']) && $address === $_ENV['TRUSTED_IP']) {
+			$this->logger->info('Prevented from block due trusted IP address.');
+			return false;
+		}
+
 		$final = time() + $timeout;
-		if(!isset($this->block[$address]) or $timeout === -1){
+		if(!isset($this->block[$address]) || $timeout === -1){
 			if($timeout === -1){
 				$final = PHP_INT_MAX;
 			}else{
@@ -381,6 +387,7 @@ class Server implements ServerInterface{
 		}elseif($this->block[$address] < $final){
 			$this->block[$address] = $final;
 		}
+		return true;
 	}
 
 	public function unblockAddress(string $address) : void{
